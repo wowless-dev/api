@@ -5,7 +5,8 @@ from google.cloud import tasks_v2
 from base64 import urlsafe_b64decode
 from json import dumps
 
-bucket = storage.Client().bucket("wowless.dev")
+client = storage.Client()
+bucket = client.bucket("wowless.dev")
 target = "https://wowless-pxnmni7wma-uc.a.run.app/wowless"
 sa = "wowless-invoker@www-wowless-dev.iam.gserviceaccount.com"
 
@@ -60,10 +61,18 @@ def handle_post(req):
 
 
 def handle_get(req):
-    # decrypt? the response to get the task id and filename
-    # if the task is done, the file should exist, so read it
-    # otherwise, return something about task status
-    return "you getted\n"
+    if "runid" not in req.args:
+        abort(400)
+    runid = req.args["runid"]
+    files = []
+    for p in p2v:
+        files.extend(
+            client.list_blobs("wowless.dev", prefix=f"logs/{p}-{runid}-")
+        )
+    out = {}
+    for f in files:
+        out[f.name.split("-")[-2]] = f.download_as_text()
+    return dumps({"rawlogs": out}) + "\n"
 
 
 def api(req):
