@@ -1,9 +1,8 @@
-from flask import abort
+from flask import abort, jsonify
 from uuid import uuid4
 from google.cloud import storage
 from google.cloud import tasks_v2
 from base64 import urlsafe_b64decode
-from json import dumps
 
 client = storage.Client()
 bucket = client.bucket("wowless.dev")
@@ -57,7 +56,7 @@ def handle_post(req):
             },
         )
         out[p] = uuid
-    return dumps(out) + "\n"
+    return jsonify(out)
 
 
 def handle_get(req):
@@ -72,7 +71,7 @@ def handle_get(req):
     out = {}
     for f in files:
         out[f.name.split("-")[-2]] = f.download_as_text()
-    return dumps({"rawlogs": out}) + "\n"
+    return jsonify({"rawlogs": out})
 
 
 def api(req):
