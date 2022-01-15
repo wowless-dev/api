@@ -37,6 +37,9 @@ def handle_post(req):
     for p in ps:
         if p not in p2v:
             abort(400)
+    lev = j["loglevel"] if "loglevel" in j else 0
+    if not isinstance(lev, int):
+        abort(400, description="invalid loglevel")
     out = {}
     for p in ps:
         uuid = str(uuid4()).replace("-", "")
@@ -52,7 +55,7 @@ def handle_post(req):
                         "audience": target,
                         "service_account_email": sa,
                     },
-                    "url": f"{target}?product={p}&addon={uuid}",
+                    "url": f"{target}?product={p}&addon={uuid}&loglevel={lev}",
                 },
                 "name": f"{parent}/tasks/{uuid}",
             },
