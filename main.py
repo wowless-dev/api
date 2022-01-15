@@ -2,6 +2,7 @@ from flask import abort, jsonify
 from uuid import uuid4
 from google.cloud import storage
 from google.cloud import tasks_v2
+from google.api_core.exceptions import NotFound
 from base64 import urlsafe_b64decode
 
 client = storage.Client()
@@ -52,7 +53,8 @@ def handle_post(req):
                         "service_account_email": sa,
                     },
                     "url": f"{target}?product={p}&addon={uuid}",
-                }
+                },
+                "name": f"{parent}/tasks/{uuid}",
             },
         )
         out[p] = uuid
@@ -63,6 +65,12 @@ def handle_get(req):
     if "runid" not in req.args:
         abort(400)
     runid = req.args["runid"]
+    try:
+        if tasks_client.get_task(name=f"{parent}/tasks/{runid}"):
+            return jsonify({"status": "pending", "rawlogs": {}})
+    except NotFound as e:
+        if not str(e).startswith("404 The task no longer exists"):
+            abort(404, description="unknown/expired runid")
     files = []
     for p in p2v:
         files.extend(
@@ -71,7 +79,7 @@ def handle_get(req):
     out = {}
     for f in files:
         out[f.name.split("-")[-2]] = f.download_as_text()
-    return jsonify({"rawlogs": out})
+    return jsonify({"status": "done", "rawlogs": out})
 
 
 def api(req):
