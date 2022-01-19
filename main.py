@@ -1,9 +1,12 @@
+import google.auth
 from flask import abort, jsonify
 from uuid import uuid4
 from google.cloud import storage
 from google.cloud import tasks_v2
 from google.api_core.exceptions import NotFound
+from google.auth.transport import requests
 from base64 import urlsafe_b64decode
+from datetime import timedelta
 
 client = storage.Client()
 bucket = client.bucket("wowless.dev")
@@ -12,6 +15,8 @@ sa = "wowless-invoker@www-wowless-dev.iam.gserviceaccount.com"
 
 parent = "projects/www-wowless-dev/locations/us-central1/queues/wowless"
 tasks_client = tasks_v2.CloudTasksClient()
+
+credentials, _ = google.auth.default()
 
 p2v = {
     "wow": "Mainline",
@@ -79,10 +84,21 @@ def handle_get(req):
         files.extend(
             client.list_blobs("wowless.dev", prefix=f"logs/{p}-{runid}-")
         )
-    out = {}
+    rawlogs = {}
+    rawlogurls = {}
+    r = requests.Request()
+    credentials.refresh(r)
     for f in files:
-        out[f.name.split("-")[-2]] = f.download_as_text()
-    return jsonify({"status": "done", "rawlogs": out})
+        key = f.name.split("-")[-2]
+        rawlogs[key] = f.download_as_text()
+        rawlogurls[key] = f.generate_signed_url(
+            expiration=timedelta(minutes=10),
+            service_account_email=credentials.service_account_email,
+            access_token=credentials.token,
+        )
+    return jsonify(
+        {"status": "done", "rawlogs": rawlogs, "rawlogurls": rawlogurls}
+    )
 
 
 def api(req):
