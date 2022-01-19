@@ -75,7 +75,7 @@ def handle_get(req):
     runid = req.args["runid"]
     try:
         if tasks_client.get_task(name=f"{parent}/tasks/{runid}"):
-            return jsonify({"status": "pending", "rawlogs": {}})
+            return jsonify({"status": "pending"})
     except NotFound as e:
         if not str(e).startswith("404 The task no longer exists"):
             abort(404, description="unknown/expired runid")
@@ -84,21 +84,17 @@ def handle_get(req):
         files.extend(
             client.list_blobs("wowless.dev", prefix=f"logs/{p}-{runid}-")
         )
-    rawlogs = {}
     rawlogurls = {}
     r = requests.Request()
     credentials.refresh(r)
     for f in files:
         key = f.name.split("-")[-2]
-        rawlogs[key] = f.download_as_text()
         rawlogurls[key] = f.generate_signed_url(
             expiration=timedelta(minutes=10),
             service_account_email=credentials.service_account_email,
             access_token=credentials.token,
         )
-    return jsonify(
-        {"status": "done", "rawlogs": rawlogs, "rawlogurls": rawlogurls}
-    )
+    return jsonify({"status": "done", "rawlogurls": rawlogurls})
 
 
 def api(req):
