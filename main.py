@@ -5,7 +5,6 @@ from google.cloud import storage
 from google.cloud import tasks_v2
 from google.api_core.exceptions import NotFound
 from google.auth.transport import requests
-from base64 import urlsafe_b64decode
 from datetime import timedelta
 
 client = storage.Client()
@@ -65,23 +64,15 @@ def handle_post(req):
     lev = j["loglevel"] if "loglevel" in j else 0
     if not isinstance(lev, int):
         abort(400, description="invalid loglevel")
-    vs = [p2v[p] for p in ps]
-    runid = j["runid"] if "runid" in j else str(uuid4()).replace("-", "")
+    if "runid" not in j:
+        abort(400, description="missing runid")
+    runid = j["runid"]
     if not isinstance(runid, str):
         abort(400, description="invalid runid")
-    if "zip" in j:
-        z = j["zip"]
-        if not isinstance(z, str):
-            abort(400, description="zip must be a base64-encoded string")
-        zz = urlsafe_b64decode(z)
-        for v in vs:
-            bucket.blob(f"addons/{runid}-{v}.zip").upload_from_string(
-                zz, content_type="application/zip"
-            )
-    elif "runid" in j:
-        for v in vs:
-            if not bucket.blob(f"addons/{runid}-{v}.zip").exists():
-                abort(400, description="missing zip")
+    vs = [p2v[p] for p in ps]
+    for v in vs:
+        if not bucket.blob(f"addons/{runid}-{v}.zip").exists():
+            abort(400, description="missing zip")
     out = {}
     for p in ps:
         url = f"{target}?product={p}&addon={runid}&loglevel={lev}"
