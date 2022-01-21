@@ -28,30 +28,63 @@ p2v = {
 }
 
 
+def handle_put(req):
+    j = req.json
+    if j is None or "product" not in j:
+        abort(400, description="missing product")
+    p = j["product"]
+    if p not in p2v:
+        abort(400, description="invalid product")
+    v = p2v[p]
+    runid = str(uuid4()).replace("-", "")
+    r = requests.Request()
+    credentials.refresh(r)
+    url = bucket.blob(f"addons/{runid}-{v}.zip").generate_signed_url(
+        expiration=timedelta(minutes=10),
+        service_account_email=credentials.service_account_email,
+        access_token=credentials.token,
+        content_type="application/zip",
+        method="PUT",
+    )
+    return jsonify({"runid": runid, "url": url})
+
+
 def handle_post(req):
     j = req.json
-    if j is None or "zip" not in j or "products" not in j:
-        abort(400)
-    z = j["zip"]
-    if not isinstance(z, str):
-        abort(400)
+    if j is None:
+        abort(400, description="missing body")
+    if "products" not in j:
+        abort(400, description="missing products")
     ps = j["products"]
     if not isinstance(ps, list):
-        abort(400)
+        abort(400, description="products must be a list")
     ps = set(ps)
     for p in ps:
         if p not in p2v:
-            abort(400)
+            abort(400, description="invalid product")
     lev = j["loglevel"] if "loglevel" in j else 0
     if not isinstance(lev, int):
         abort(400, description="invalid loglevel")
+    vs = [p2v[p] for p in ps]
+    runid = j["runid"] if "runid" in j else str(uuid4()).replace("-", "")
+    if not isinstance(runid, str):
+        abort(400, description="invalid runid")
+    if "zip" in j:
+        z = j["zip"]
+        if not isinstance(z, str):
+            abort(400, description="zip must be a base64-encoded string")
+        zz = urlsafe_b64decode(z)
+        for v in vs:
+            bucket.blob(f"addons/{runid}-{v}.zip").upload_from_string(
+                zz, content_type="application/zip"
+            )
+    elif "runid" in j:
+        for v in vs:
+            if not bucket.blob(f"addons/{runid}-{v}.zip").exists():
+                abort(400, description="missing zip")
     out = {}
     for p in ps:
-        uuid = str(uuid4()).replace("-", "")
-        v = p2v[p]
-        bucket.blob(f"addons/{uuid}-{v}.zip").upload_from_string(
-            urlsafe_b64decode(z), content_type="application/zip"
-        )
+        url = f"{target}?product={p}&addon={runid}&loglevel={lev}"
         tasks_client.create_task(
             parent=parent,
             task={
@@ -60,12 +93,12 @@ def handle_post(req):
                         "audience": target,
                         "service_account_email": sa,
                     },
-                    "url": f"{target}?product={p}&addon={uuid}&loglevel={lev}",
+                    "url": url,
                 },
-                "name": f"{parent}/tasks/{uuid}",
+                "name": f"{parent}/tasks/{runid}",
             },
         )
-        out[p] = uuid
+        out[p] = runid
     return jsonify(out)
 
 
@@ -102,5 +135,7 @@ def api(req):
         return handle_post(req)
     elif req.method == "GET":
         return handle_get(req)
+    elif req.method == "PUT":
+        return handle_put(req)
     else:
         abort(400)
